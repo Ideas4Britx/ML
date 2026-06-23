@@ -11,7 +11,22 @@ class GetTextFeaturesTransformer(BaseEstimator,TransformerMixin):
               "%", "&", "*", "_", "^", "~", "|", "+", "=",
               "!","+"]
 
-    def fit(self,X,y=None): #cuando es necesario aprender algo del dataset_train
+    def fit(self, X, y=None):
+        vocab = set()
+        for text in X['text']:
+            for word in text.split():
+                isurl = re.search(r'https?://\S+|www\.\S+', word)
+                word = word.strip(''.join(self.puntuaction)).lower().strip()
+                if isurl:
+                    continue
+                elif word.isnumeric():
+                    continue
+                else:
+                    vocab.add(word)
+
+        self.word_vocabulary_ = sorted(vocab)
+        self.extra_features_ = ['URL', 'NUM', 'CHAR', 'total_words']
+        self.vocabulary_ = self.word_vocabulary_ + self.extra_features_
         return self
 
     def transform(self,X):
@@ -42,16 +57,13 @@ class GetTextFeaturesTransformer(BaseEstimator,TransformerMixin):
 
             text_words.append(words_data)
 
-        X= pd.DataFrame(text_words).fillna(0)
+        X_df = pd.DataFrame(text_words).fillna(0)
 
-        nums = X['NUM']
+        # total_words: lo calculas ANTES del reindex, sumando solo las columnas de palabras reales
+        word_cols = [c for c in X_df.columns if c in self.word_vocabulary_]
+        X_df['total_words'] = X_df[word_cols].sum(axis=1)
 
-        chars = X['CHAR']
+        # aquí se fuerza todo a las columnas fijas aprendidas en fit
+        X_df = X_df.reindex(columns=self.vocabulary_, fill_value=0)
 
-        X= X.drop(['NUM','CHAR'],axis=1)
-
-        X_sum = X.sum(axis=1).rename('total_words')
-
-        X = pd.concat([X,nums,chars,X_sum],axis=1)
-
-        return X.to_numpy() #es muy sparse, muchos 0s. hay odelsoq eu se benfician de eso y entonces puede estar bien no escalar esas clases. 
+        return X_df.to_numpy() #es muy sparse, muchos 0s. hay odelsoq eu se benfician de eso y entonces puede estar bien no escalar esas clases. 
